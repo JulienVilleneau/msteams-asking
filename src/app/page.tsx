@@ -1,137 +1,137 @@
 'use client'
 import React, { useState } from 'react';
-import { OpenAIClient, AzureKeyCredential, ChatCompletions } from '@azure/openai';
+import { readFileContent, checkIfFileExtension } from '../utils/fileHelpers';
+import { transcriptAsJson } from '../utils/transcriptReader';
+import { PageProcessExec } from './page.enums';
+import { getReportingMeetingAboutTranscript, getActionPlanAboutTranscript, getQuestionsAboutTranscript } from '../services/azureOpenAi'; 
 import '../styles/page.css';
 
 export default function Home() {
   const [file, setFile] = React.useState<File | null>(null);
-  const [questionCount, setQuestionCount] = React.useState(0);
+  const [questionCount, setQuestionCount] = React.useState(3);
+  const [reportingMeeting, setReportingMeeting] = React.useState<ReportingMeeting | null>(null);
+  const [actionPlans, setActionPlans] = React.useState<ActionPlans | null>(null);
   const [questions, setQuestions] = React.useState<Questions | null>(null);
-  const [loading, setLoading] = useState(false); 
+  const [reportingMeetingLoading, setReportingMeetingLoading] = React.useState(false);
+  const [actionPlansLoading, setActionPlansLoading] = React.useState(false);
+  const [questionsLoading, setQuestionsLoading] = React.useState(false);
   
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    } else {
-      setFile(null);
-    }
+    const newFile = e.target.files ? e.target.files[0] : null;  
+    setFile(newFile);
   };
-  
+
   const onQuestionCountChange = (e: React.FormEvent<HTMLInputElement>) => {
     const target = e.target as HTMLInputElement;
     const numericValue = Number(target.value);
     setQuestionCount(numericValue);
   };
+  
+  const onReportMeetingClick = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReportingMeetingLoading(true);
+    processExec(PageProcessExec.Reporting);
+  };
+
+  const onActionPlanClick = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setActionPlansLoading(true);
+    processExec(PageProcessExec.ActionPlan);
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!file) {
-      alert('Please select a file!');
-      return;
-    }
-
-    // Check if the file has a .vtt extension  
-    const fileExtension = file.name.split('.').pop();
-    if (fileExtension?.toLowerCase() !== 'vtt') {
-      alert('Please select a VTT file!');
-      return;
-    }
-  
-    setLoading(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => handleFileRead(event, questionCount);
-      reader.readAsText(file);
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setLoading(false);
-    }
+    setQuestionsLoading(true);
+    processExec(PageProcessExec.Question);
   };
 
-  // Lit le fichier et appelle l'API Azure OpenAI
-  const handleFileRead = async (event: ProgressEvent<FileReader>, questionCount: number) => {  
-    const fileContents = event.target?.result;  
-  
-    if (typeof fileContents === 'string') {
-      // Split the file contents into lines
-      const lines = fileContents.split('\n');
+  const readTranscript = async (file: File | null) : Promise<string> => {
+    let content : string = "";
 
-      const structuredData: { name: string; line: string; }[] = [];
-      const pattern: RegExp = /<v (?<name>.*?)>(?<line>.*?)<\/v>/g;
+    if (file && checkIfFileExtension(file, "vtt")) {
+      content = await readFileContent(file);
+    } else {
+      console.warn("Aucun fichier sélectionné");  
+      alert("Aucun fichier sélectionné");
+    }
 
-      // For each line, find matches and build JSON strings
-      lines.forEach((line) => {
-        const matches = Array.from(line.matchAll(pattern));
-        if (matches) {
-          for (const match of matches) {
-              if (match.groups) {
-                  structuredData.push({ name: match.groups.name, line: match.groups.line });
-              }
-          }
-        }
-      });
+    return content;
+  }
 
-      const jsonFinal = JSON.stringify(structuredData);
+  const processExec = async (pageProcessExec: PageProcessExec) => {
+    try {
+      // Read the file
+      const fileContent : string = await readTranscript(file);
+      if (!fileContent || fileContent == "") {
+        return;
+      }
+
+      const jsonFinal = transcriptAsJson(fileContent);
 
       // Call Azure OpenAI API to get questions back
-      await callAzureOaiCompletions(jsonFinal, questionCount);
-    }
-    else {
-      console.log("File not found");
-    }
-  };
-  
-  // Appelle l'API Azure OpenAI pour récupérer les questions
-  const callAzureOaiCompletions = async (jsonFinal: string, questionCount: number) => {
-    const messagesToSent = `"$(jsonFinal)" Give me $(questionCount) questions about the previous conversation. Each question must purposes 4 answers but only one is right, and must respect the following format: [{"question": "Todo?","answers":[{"option":"Answer","isCorrect":false}]}]`;
-    
-    const messages = [
-      { role: "user", content: messagesToSent }
-    ];
-    const endpoint = "https://oai-jvi-openai-demo.openai.azure.com/";
-    const apiKey = process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY || "";
-    const client = new OpenAIClient(endpoint, new AzureKeyCredential(apiKey));
-
-    const deploymentId = process.env.NEXT_PUBLIC_DEPLOYMENT_NAME || "";
-    //console.log("Execute result");
-    try {
-      const result : ChatCompletions = await client.getChatCompletions(deploymentId, messages,
-        {
-          maxTokens: 800,
-          temperature: 0.7,
-          frequencyPenalty: 0,
-          presencePenalty: 0,
-          topP: 0.95,
-          stop: ["\n"]
-        });
-      //console.log("Result is...");
-
-      if (result && result.choices) {
-        for (const choice of result.choices) {
-          if (choice.message && choice.message.role === "assistant" && choice.message.content) {
-            setQuestions(JSON.parse(choice.message.content));
-          }
-        }
-      } else {
-        console.log("No result");
+      let result : any;
+      switch (pageProcessExec) {
+        case PageProcessExec.Reporting:
+          result = await getReportingMeetingAboutTranscript(jsonFinal);
+          setReportingMeeting(result);
+          setReportingMeetingLoading(false);
+          break;
+        case PageProcessExec.ActionPlan:
+          result = await getActionPlanAboutTranscript(jsonFinal);
+          setActionPlans(result);
+          setActionPlansLoading(false);
+          break;
+        case PageProcessExec.Question:
+          result = await getQuestionsAboutTranscript(jsonFinal, questionCount);
+          setQuestions(result);
+          setQuestionsLoading(false);
+          break;
       }
-    } catch (error) {
+
+    } catch(error) {
+      console.error('Erreur lors du traitement:', error);
       console.log(error);
+      alert('Erreur lors du traitement');
     }
   };
 
-  function formateQuizzContent() {
+  function formateReportingMeeting() {
+    if (!reportingMeeting) {
+      return <div>Impossible de faire un compte-rendu</div>;
+    } else {
+      return <div>{reportingMeeting.reportContent}</div>;
+    }
+  }; 
+
+  function formateActionPlans() {
+    let content = [];
+
+    if (!actionPlans) {
+      return <div>Pas de plans d'actions identifié</div>;
+    }
+
+    return (
+      <div>
+        <ul className="action-plan">
+          {actionPlans.map((actionPlan, index) => (
+            <li key={index}>{actionPlan.libelle}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }; 
+
+  function formateQuestions() {
     let content = []; 
 
     if (!questions) {
       return <div>Aucune question n'a pu être identifiée</div>;
     }
 
+    let i = 0;
     for (const question of questions) {
       content.push(
-        <div>
+        <div key={i}>
           <div>&nbsp;</div>
           <div>
             Question: {question.question}  
@@ -143,6 +143,7 @@ export default function Home() {
           </div>
         </div>
       );
+      i++;
     }
   
     return content;  
@@ -156,22 +157,44 @@ export default function Home() {
           Upload file:
           <input type="file" accept=".vtt" onChange={onFileChange} />
         </label>
-        <label>
-          Nombre de questions attendues:
-          <input type="number" value={questionCount} onChange={onQuestionCountChange} />
-        </label>
-        <button className="button" type="submit" disabled={loading}>
-          {loading ? 'Chargement...' : 'Lister des questions'}
-        </button>
+        <div className="w-full">
+          <div className="flex">
+            <div className="w-1/3 relative bg-slate-200 p-4">
+              <button className="button absolute bottom-0" type="button" disabled={reportingMeetingLoading} onClick={onReportMeetingClick}>
+              {reportingMeetingLoading ? 'Chargement...' : 'Générer le compte-rendu'}
+              </button>
+            </div>
+            <div className="w-1/3 relative bg-slate-200 p-4">
+              <button className="button absolute bottom-0" type="button" disabled={actionPlansLoading} onClick={onActionPlanClick}>
+                {actionPlansLoading ? 'Chargement...' : 'Générer le plan d\'action'}
+              </button>
+            </div>
+            <div className="w-1/3 bg-slate-200 p-4">
+              <label>
+                Nombre de questions attendues:
+                <input type="number" value={questionCount} onChange={onQuestionCountChange} />
+              </label>
+              <button className="button" type="submit" disabled={questionsLoading}>
+                {questionsLoading ? 'Chargement...' : 'Lister des questions'}
+              </button>
+            </div>
+          </div>
+        </div>
 
-        {loading && <div>Loader...</div>}
+        {/* {questionsLoading && <div>Loader...</div>} */}
         {
           /* Remplacer cette ligne par un composant de loader */
         }
       </form>
       
       <div>
-        {formateQuizzContent()}
+        {formateReportingMeeting()}
+      </div>
+      <div>
+        {formateActionPlans()}
+      </div>
+      <div>
+        {formateQuestions()}
       </div>
     </div>
   );
