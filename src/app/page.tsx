@@ -130,12 +130,12 @@ export default function Home() {
   function formateActionPlans() {
     if (isAsking && currentAsk == PageProcessExec.ActionPlan) {
       if (!actionPlans) {
-        return <div className="no-actionplan">Pas de plans d'actions identifié</div>;
+        return <div className="no-actionplan">Pas de plans d&apos;actions identifié</div>;
       }
 
       return (
         <div className="action-plan-container">
-          <h2 className="action-plan-title">Plan d'actions :</h2>
+          <h2 className="action-plan-title">Plan d&apos;actions :</h2>
           <ul className="action-plan">
             {actionPlans.map((actionPlan, index) => (
               <li key={index} className="action-plan-item">{actionPlan.libelle}</li>
@@ -151,7 +151,7 @@ export default function Home() {
   function formateQuestions() {
     if (isAsking && currentAsk === PageProcessExec.Question) {
       if (!questions) {
-        return <div className="no-questions">Aucune question n'a pu être identifiée</div>;
+        return <div className="no-questions">Aucune question n&apos;a pu être identifiée</div>;
       }
 
       return (
