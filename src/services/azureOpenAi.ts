@@ -1,9 +1,10 @@
 import { OpenAIClient, AzureKeyCredential, ChatCompletions } from '@azure/openai';
+import { jsonParse } from '../utils/jsonHelpers';
 
 
 export const getReportingMeetingAboutTranscript = async (jsonFinal: string) => {
     try {
-        const messagesToSent = `${jsonFinal} Build a report meeting in French with the following format: {"reportContent": "Todo"}`;
+        const messagesToSent = `here is a Teams conference transcript:"${jsonFinal}". Build a report meeting in French and return it in the following format: {"reportContent": "Todo"}`;
 
         const result = await callChatCompletions(messagesToSent);
         if (!result || !result.choices) {
@@ -13,7 +14,7 @@ export const getReportingMeetingAboutTranscript = async (jsonFinal: string) => {
             const choice = result.choices[0];
             console.log(choice);
             if (choice.message && choice.message.role === "assistant" && choice.message.content) {
-                return JSON.parse(choice.message.content) as ReportingMeeting;
+                return jsonParse(choice.message.content) as ReportingMeeting;
             }
             return null;
         }
@@ -26,7 +27,7 @@ export const getReportingMeetingAboutTranscript = async (jsonFinal: string) => {
 
 export const getActionPlanAboutTranscript = async (jsonFinal: string) => {
     try {
-        const messagesToSent = `${jsonFinal} Build a action plan as bullet points of the meeting in French respecting the following format: [{"libelle":"content"}]`;
+        const messagesToSent = `here is a Teams conference transcript:"${jsonFinal}". Resume the action plan with 5 bullet points max in French respecting the following format: [{"libelle":"content"}]`;
 
         const result = await callChatCompletions(messagesToSent);
         if (!result || !result.choices) {
@@ -36,7 +37,7 @@ export const getActionPlanAboutTranscript = async (jsonFinal: string) => {
             const choice = result.choices[0];
             console.log(choice);
             if (choice.message && choice.message.role === "assistant" && choice.message.content) {
-                return JSON.parse(choice.message.content) as ActionPlans;
+                return jsonParse(choice.message.content) as ActionPlans;
             }
             return null;
         }
@@ -49,7 +50,7 @@ export const getActionPlanAboutTranscript = async (jsonFinal: string) => {
 
 export const getQuestionsAboutTranscript = async (jsonFinal: string, questionCount: number) => {
     try {
-        const messagesToSent = `${jsonFinal} Give me ${questionCount} questions & answer in French about the previous conversation. Each question must purposes 4 answers but only one is right, and must respect the following format: [{"question": "Todo?","answers":[{"option":"Answer","isCorrect":false}]}]`;
+        const messagesToSent = `here is a Teams conference transcript:"${jsonFinal}". Give me ${questionCount} questions & answer in French about the previous conversation. Each question must purposes 4 answers but only one is right, and must respect the following format: [{"question": "Todo?","answers":[{"option":"Answer","isCorrect":false}]}]`;
 
         const result = await callChatCompletions(messagesToSent);
         if (!result || !result.choices) {
@@ -58,7 +59,7 @@ export const getQuestionsAboutTranscript = async (jsonFinal: string, questionCou
         } else {
             const choice = result.choices[0];
             if (choice.message && choice.message.role === "assistant" && choice.message.content) {
-                return JSON.parse(choice.message.content) as Questions;
+                return jsonParse(choice.message.content) as Questions;
             }
             return null;
         }
